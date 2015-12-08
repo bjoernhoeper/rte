@@ -9,6 +9,7 @@ addons:
     - tcl
     - bison
     - flex
+    - cppcheck
 #    - gcc-multilib
 
 #env:
