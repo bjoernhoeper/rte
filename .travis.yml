@@ -18,6 +18,7 @@ addons:
 script:
    - cd ./build
    - tclsh ./acplt_build.tcl no_dbcommands 64
+   - cppcheck --force --inline-suppr acplt_build/acplt-source/*
 
 after_failure:
    - tail -n 20 acplt_build.log
