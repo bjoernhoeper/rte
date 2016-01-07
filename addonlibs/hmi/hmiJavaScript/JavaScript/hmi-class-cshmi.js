@@ -46,8 +46,8 @@
 *
 *	CVS:
 *	----
-*	$Revision$
-*	$Date$
+*	$Revision: 9848 $
+*	$Date: 2015-11-05 11:00:38 +0100 (Do, 05 Nov 2015) $
 *
 *	History:
 *	--------
@@ -1236,6 +1236,41 @@ cshmi.prototype = {
 				return previousTemplateCount;
 			}else if (VisualObject.hasAttribute(ParameterValue)){
 				return VisualObject.getAttribute(ParameterValue);
+			}else if (ParameterValue === "getPolylineTotalLength" ||
+					ParameterValue.indexOf("getPolylinePointXAtFractionLength") !== -1||
+					ParameterValue.indexOf("getPolylinePointYAtFractionLength") !== -1){
+
+				//find a polyline with Coords in a parent group
+				var IteratorObj = VisualObject;
+				var Coords = null;
+				while( (IteratorObj = IteratorObj.parentNode) && IteratorObj !== null && IteratorObj.namespaceURI == HMI.HMI_Constants.NAMESPACE_SVG){
+					for(var i = 0; i < IteratorObj.childNodes.length;i++){
+						if (Source.childNodes[i].tagName === "polyline" && Source.childNodes[i].Coords !== undefined){
+							Coords = Source.childNodes[i].Coords;
+							break;
+						}
+					}
+				}
+				if (ParameterValue === "OperatorInput"){
+					return getPolylineTotalLength(Coords).toString();
+				}
+				
+				//e.g. "getPolylinePointXAtFractionLength:TemplateFBReferenceVariable:fraction"
+				var splittedValueParameter = ParameterValue.split(":");
+				var fraction = 0;
+				if (splittedValueParameter.length > 2){
+					this.ResourceList.Actions["tempPath"] = new Object();
+					this.ResourceList.Actions["tempPath"].ParameterName = splittedValueParameter[2];
+					this.ResourceList.Actions["tempPath"].ParameterValue = splittedValueParameter[3];
+					fraction = this._getValue(VisualObject, "tempPath", null, null, null, true);
+				}
+				var Point = getPolylineXPointFromFraction(Coords, fraction);
+				if(ParameterValue.indexOf("getPolylinePointXAtFractionLength") !== -1){
+					return Point.x.toString();
+				}else if(ParameterValue.indexOf("getPolylinePointYAtFractionLength") !== -1){
+					return Point.y.toString();
+				}
+				return "";
 			}else{
 				//unknown element variable
 				return "";
@@ -4955,6 +4990,9 @@ cshmi.prototype = {
 				
 				//append foreignObject to VisualObject
 				parentObject = VisualObject;
+				var classList = csHMIgetElementsByClassName(parentObject, 'autosize');
+				var classListX = csHMIgetElementsByClassName(parentObject, 'autosizeX');
+				var classListY = csHMIgetElementsByClassName(parentObject, 'autosizeY');
 			}else{
 				//build a new DIV in the pure html document
 				HTMLcontentNode = document.createElement('div');
@@ -4969,10 +5007,12 @@ cshmi.prototype = {
 				
 				//append node to HTML document
 				parentObject = HMI.Playground;
+				classList = csHMIgetElementsByClassName(HTMLcontentNode, 'autosize');
+				classListX = csHMIgetElementsByClassName(HTMLcontentNode, 'autosizeX');
+				classListY = csHMIgetElementsByClassName(HTMLcontentNode, 'autosizeY');
 			}
 			
 			//if Element with class "autosize/autosizeX/autosizeY" exists, adjust width&heigth/width/height taken from Client
-			var classList = csHMIgetElementsByClassName(parentObject, 'autosize');
 			if (classList.length != 0) {
 				for (var i = 0; i < classList.length; ++i) {
 					//special adjustment for <canvas>-Element
@@ -4984,7 +5024,6 @@ cshmi.prototype = {
 					classList[i].style.height = SVGHeight+"px";
 				}		
 			}
-			var classListX = csHMIgetElementsByClassName(parentObject, 'autosizeX');
 			if (classListX.length != 0) {
 				for (var i = 0; i < classListX.length; ++i) {
 					if (classListX[i].tagName.toLowerCase() === "canvas") {
@@ -4993,7 +5032,6 @@ cshmi.prototype = {
 					classListX[0].style.width = SVGWidth+"px";
 				}
 			}
-			var classListY = csHMIgetElementsByClassName(parentObject, 'autosizeY');
 			if (classListY.length != 0) {
 				for (var i = 0; i < classListY.length; ++i) {
 					if (classListY[i].tagName.toLowerCase() === "canvas") {
@@ -6417,7 +6455,7 @@ function ObserverEntry(ObjectName, delimiter){
 	this.value = null;
 }
 
-var filedate = "$Date$";
+var filedate = "$Date: 2015-11-05 11:00:38 +0100 (Do, 05 Nov 2015) $";
 filedate = filedate.substring(7, filedate.length-2);
 if ("undefined" == typeof HMIdate){
 	HMIdate = filedate;
