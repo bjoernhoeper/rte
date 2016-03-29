@@ -11,7 +11,7 @@ lc = $(subst A,a,$(subst B,b,$(subst C,c,$(subst D,d,$(subst E,e,$(subst F,f,$(s
 DATABASE = database 
 DATABASECREATEKEYS = 
 MAKMAKOPTIONS = -o
-EXTRA_CC_FLAGS = -DLOG_KS=0 -DLOG_KS_ERROR=1 -DLOG_KS_WARNING=1 -Wextra -Wno-unused-parameter -Werror
+EXTRA_CC_FLAGS = -DLOG_KS=0 -DLOG_KS_ERROR=1 -DLOG_KS_WARNING=1 -Wextra -Wno-unused-parameter
 EXTRA_LIBS = 
 LD_FLAGS = 
 COMPILER = GCC
@@ -19,10 +19,13 @@ PREBUILD = ../prebuild.tcl
 POSTBUILD = ../postbuild.tcl
 COMPILER_LO = $(call lc,$(COMPILER))
 
+# Set TARGETOS to --targetWindows --targetLinux or --targetSolaris to cross-compile for the respective system.\n
+TARGETOS = 
+		
 all:
 
 %:
-	acplt_makmak -l ksxdr $(MAKMAKOPTIONS)
+	acplt_makmak -l ksxdr $(MAKMAKOPTIONS) $(TARGETOS)
 	tclsh $(PREBUILD) ksxdr $(MAKMAKOPTIONS)
 	$(MAKE) EXTRA_CC_FLAGS='$(EXTRA_CC_FLAGS)' EXTRA_LIBS='$(EXTRA_LIBS)' LD_FLAGS='$(LD_FLAGS)' TARGET='$*' -f $(call lc,$(COMPILER)).mk $*
 	tclsh $(POSTBUILD) ksxdr

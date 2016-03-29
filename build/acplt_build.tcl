@@ -1,11 +1,12 @@
 # ACPLT Build Script
-# (c) 2015 Chair of Process Control Engineering, RWTH Aachen University
+# (c) 2016 Chair of Process Control Engineering, RWTH Aachen University
 # Author: Gustavo Quiros <g.quiros@plt.rwth-aachen.de>
 # Author: Sten Gruener   <s.gruener@plt.rwth-aachen.de>
 # Author: Constantin Wagner <c.wagner@plt.rwth-aachen.de>
 # Author: Holger Jeromin <h.jeromin@plt.rwth-aachen.de>
+# Author: Lars Evertz <l.evertz@plt.rwth-aachen.de>
 #
-# Usage: tclsh acplt_build.tcl (release) (compileonly)
+# Usage: tclsh acplt_build.tcl (release) (compileonly) (cross FILENAME) (repo REPOSITORY_URL)
 set release 0
 set checkout 0
 set compileonly 0
@@ -17,6 +18,13 @@ set notbuildedlibs 0
 set ov_debug "OV_DEBUG=1"
 set ov_arch_bitwidth_str "OV_ARCH_BITWIDTH=32"
 set ov_arch_bitwidth_int 32
+set cross 0
+set crossFilename ""
+set targetOS ""
+set crossArch ""
+set gitRepo "https://github.com/acplt/rte/trunk/"
+
+
 foreach arg $argv {
 	if {$arg == "checkout"} {
 		set release 0
@@ -40,8 +48,20 @@ foreach arg $argv {
 		set ov_arch_bitwidth_str "OV_ARCH_BITWIDTH=64"
 		set ov_arch_bitwidth_int 64
 	}
+	if {$crossFilename == 1} {
+		set crossFilename $arg
+	}
+	if {$arg=="cross"} {
+		set cross 1
+		set crossFilename 1
+	}
+	if {$gitRepo == 1} {
+		set gitRepo $arg
+	}
+	if {$arg=="repo"} {
+		set gitRepo 1
+	}
 }
-
 
 
 set basedir [pwd]
@@ -76,6 +96,25 @@ if { $os == "nt" } then {
 }
 
 file delete -force $logfile
+
+#read in cross settings if wanted
+if {$cross==1} {
+	source $crossFilename
+	if {$targetOS=="nt"} {
+		set build_dbcommands 0
+		set libsuffix ".dll"
+		set exesuffix ".exe"
+		set batsuffix ".bat"
+	} else {
+		set libsuffix ".so"
+		set exesuffix ""
+		set batsuffix ".sh"
+	}
+	
+} else {
+	set targetOS $os
+}
+
 
 
 ####################### PROCEDURES #######################
@@ -274,6 +313,7 @@ proc get_revision {} {
 # Checkout a SVN module or copy if the file are there (from git?)
 proc checkout_dir {module {vcs_server "github"} {dirname ""} } {
 	global basedir
+	global gitRepo
 	set temp [split $module "/"]
 	if {$dirname == ""} {
 		set dirname [lindex $temp end]
@@ -285,7 +325,7 @@ proc checkout_dir {module {vcs_server "github"} {dirname ""} } {
 	}
 	if {$vcs_server == "github"} {
 		print_msg "Checking out $module from github"
-		execute svn co https://github.com/acplt/rte/trunk/$module $dirname
+		execute svn co ${gitRepo}${module} $dirname
 	} elseif {$vcs_server == "acpltpublish"} {
 		print_msg "Checking out $module from acplt publish"
 		execute svn co https://dev.plt.rwth-aachen.de/acplt-repo/publish/$module $dirname
@@ -330,9 +370,14 @@ proc checkout_acplt {} {
 proc build_package {package args} {
 	global ov_debug
 	global ov_arch_bitwidth_str
+	global crossArch
 	print_msg "Building $package via build_package"
-	
-	return [execute $args $ov_debug $ov_arch_bitwidth_str]
+	if {$crossArch == "ARM"} {
+		set crossOverrideBitwidthFlags	"OV_ARCH_BITWIDTH_CFLAGS= OV_ARCH_BITWIDTH_LDFLAGS= "	
+		return [execute $args $ov_debug $ov_arch_bitwidth_str $crossOverrideBitwidthFlags]
+	} else {
+		return [execute $args $ov_debug $ov_arch_bitwidth_str]
+	}
 }
 
 # Build in a directory using cygwin bash and ignoring errors
@@ -386,9 +431,25 @@ proc build_acplt {} {
 	global make
 	global basedir
 	global build_dbcommands
+	global cross
+	global CrossPrefix
+	global targetOS
+	global crossArch
+	variable crossArgs
 
 	if { $os == "nt" } then { set makefile "msvc.mk" } else { set makefile "Makefile" }
-	build_package libml make -C $builddir/base/ov/source/libml -f $makefile
+#libml
+	if {$cross==1} { 
+		set crossArgs "GCC_BIN_PREFIX=$CrossPrefix"
+		if {$crossArch == "ARM"} {
+			build_package libml make -C $builddir/base/ov/source/libml -f $makefile $crossArgs OV_ARCH_BITWIDTH_CFLAGS= OV_ARCH_BITWIDTH_LDFLAGS= 
+		} else {
+			build_package libml make -C $builddir/base/ov/source/libml -f $makefile $crossArgs
+		}
+	} else {
+		build_package libml make -C $builddir/base/ov/source/libml -f $makefile
+	}
+
 	if { $os == "nt" && $build_dbcommands == 1 } then { 
 		cd $builddir/oncrpc
 		execute make.bat
@@ -410,12 +471,40 @@ proc build_acplt {} {
 		cd $basedir
 	} else {
 		if {$build_dbcommands == 1} {
-			#enabling plt and ks just for fb_dbcommands
-			build_package plt make -C $builddir/base/plt/build/$os
-			build_package ks make -C $builddir/base/ks/build/$os
-			build_package fbs_dienste make -C $builddir/base/fbs_dienste/build/$os
+			if {$cross==1} { 
+				set crossArgsPrefix "GCC_BIN_PREFIX=$CrossPrefix"
+				#enabling plt and ks just for fb_dbcommands
+				build_package plt make -C $builddir/base/plt/build/$os $crossArgsPrefix
+				build_package ks make -C $builddir/base/ks/build/$os $crossArgsPrefix
+				build_package fbs_dienste make -C $builddir/base/fbs_dienste/build/$os $crossArgsPrefix
+			} else {
+				#enabling plt and ks just for fb_dbcommands
+				build_package plt make -C $builddir/base/plt/build/$os
+				build_package ks make -C $builddir/base/ks/build/$os
+				build_package fbs_dienste make -C $builddir/base/fbs_dienste/build/$os
+			}
+			
 		}
-		build_package ov make -C $builddir/base/ov/build/$os
+		set crossArgsPrefix ""
+		set crossArgsCGDir ""
+		set crossArgsCG	""
+		if {$cross==1} { 
+			set crossArgsPrefix "GCC_BIN_PREFIX=$CrossPrefix"
+			set crossArgsCGDir "OV_CODEGEN_DIR= "
+			set crossArgsCG	"OV_CODEGEN_EXE=ov_codegen"
+			if {$targetOS=="nt"} {
+				set crossWindresDefs "WINDRESDEFS=--define _WIN32"
+				build_package ov make -C $builddir/base/ov/build/cygwin $crossArgsPrefix $crossArgsCGDir $crossArgsCG $crossWindresDefs 
+			} else {
+				if {$crossArch == "ARM"} {
+					build_package ov make -C $builddir/base/ov/build/$os $crossArgsPrefix $crossArgsCGDir $crossArgsCG OV_ARCH_BITWIDTH_CFLAGS= OV_ARCH_BITWIDTH_LDFLAGS= 
+				} else {
+					build_package ov make -C $builddir/base/ov/build/$os $crossArgsPrefix $crossArgsCGDir $crossArgsCG
+				}
+			}
+		} else {
+			build_package ov make -C $builddir/base/ov/build/$os
+		}
    }
    #if { $os == "nt" } then {
    #	build_package acplt_makmak $make -C $builddir/base/acplt_makmak/build/ntvc
@@ -426,13 +515,13 @@ proc build_acplt {} {
 
 proc install_dir {dir} {
 	global builddir
-	global os
+	global targetOS
 	print_msg "Installing from $dir"
-	if { $os == "linux" } then {
+	if { $targetOS == "linux" } then {
 		set binfiles [concat [glob -nocomplain $dir/*.so] [glob -nocomplain -type {f x} $dir/*]]
 		set libfiles [concat [glob -nocomplain $dir/*.a]]
 	} 
-	if { $os == "nt" } then {
+	if { $targetOS == "nt" } then {
 		set binfiles [concat [glob -nocomplain $dir/*.dll $dir/*.exe]]
 		set libfiles [concat [glob -nocomplain $dir/*.lib $dir/*.a]]
 	}
@@ -466,7 +555,11 @@ proc release_lib_better {libname option} {
 	global os
 	global make
 	global compileonly
-	
+	global cross	
+	global targetOS
+	global CrossPrefix
+	global crossArch
+
 	cd $releasedir/dev/
 	if { $compileonly != 1 } then {
 		file delete -force $releasedir/dev/$libname/
@@ -506,11 +599,25 @@ proc release_lib_better {libname option} {
 		#break if no successful compile
 		set break_in_next_iteration 1 
 		foreach libname $not_yet_build {
-			cd $releasedir/dev/$libname/build/$os/
+			cd $releasedir/dev/$libname/build/$targetOS/
+			
 			if { $option == "all" } then {
 				print_msg "Note: no debug symbols will be created"
 			}
-			set success [build_package $libname $make $option]
+			if {$cross == 1} {
+				if {$targetOS == "nt"} {
+					set MAKMAKOPTION "TARGETOS=--targetWindows"
+				} else {
+					set MAKMAKOPTION "TARGETOS=--targetLinux"
+				}
+				if {$crossArch == "ARM"} {
+					set MAKMAKTEMP "${MAKMAKOPTION} -mARM"
+					set MAKMAKOPTION $MAKMAKTEMP
+				}
+				set success [build_package $libname $make $option GCC_BIN_PREFIX=$CrossPrefix BIN_DIR= $MAKMAKOPTION]
+			} else {			
+				set success [build_package $libname $make $option]
+			}
 			
 			if { $success == 0 } {
 				#iterate once more
@@ -563,15 +670,17 @@ proc create_release {} {
 	global env
 	global libsuffix
 	global build_dbcommands
+	global cross	
 
 	#create a release
 	set env(ACPLT_HOME) $releasedir
-	if { $os == "nt" } then {
-		set env(PATH) $releasedir/system/sysbin/\;$env(PATH)
-	} else {
-		set env(PATH) $releasedir/system/sysbin/:$env(PATH)
+	if { $cross != 1} {	
+		if { $os == "nt" } then {
+			set env(PATH) $releasedir/system/sysbin/\;$env(PATH)
+		} else {
+			set env(PATH) $releasedir/system/sysbin/:$env(PATH)
+		}
 	}
-
 	print_msg "Creating release in $releasedir"
 	# if { [file exists $releasedir] } then {
 	#file delete -force $releasedir
@@ -715,8 +824,8 @@ proc compress {archivename dir} {
 }
 
 # ============== MAIN STARTS HERE ==================
-set system_libs {syslibs/comm/ksbase syslibs/comm/TCPbind syslibs/comm/UDPbind syslibs/comm/ksxdr syslibs/comm/kshttp syslibs/comm/iec62541 syslibs/functionblock/fb syslibs/functionblock/ssc}
-set addon_libs {addonlibs/hmi/cshmi addonlibs/commclient/ksapi addonlibs/commclient/fbcomlib addonlibs/commclient/iec62541fb addonlibs/functionblock/iec61131stdfb addonlibs/functionblock/vdivde3696 addonlibs/functionblock/ACPLTlab003lindyn addonlibs/functionblock/IOdriverlib addonlibs/field/modbusTcpLib}
+set system_libs {syslibs/comm/ksbase syslibs/comm/TCPbind syslibs/comm/UDPbind syslibs/comm/ksxdr syslibs/comm/kshttp syslibs/comm/opcua syslibs/functionblock/fb syslibs/functionblock/ssc}
+set addon_libs {addonlibs/hmi/cshmi addonlibs/commclient/ksapi addonlibs/commclient/fbcomlib addonlibs/commclient/opcuafb addonlibs/functionblock/iec61131stdfb addonlibs/functionblock/vdivde3696 addonlibs/functionblock/ACPLTlab003lindyn addonlibs/functionblock/IOdriverlib addonlibs/field/modbusTcpLib addonlibs/comm/MessageSys addonlibs/comm/kshttpMsgExt addonlibs/processcontrol/cmdlib addonlibs/processcontrol/PCMsgParser addonlibs/processcontrol/PCMsgCreator addonlibs/functionblock/SSChelper}
 print_msg "checking out all libraries of the acplt system"
 
 if {$release != 1} {
@@ -802,7 +911,11 @@ if { $os == "nt" } then {
 	install_acplt cygwin
 } else {
 	build_acplt
-	install_acplt linux
+	if {$targetOS == "nt"} {
+		install_acplt cygwin
+	} else {
+		install_acplt linux
+	}
 }
 
 if {$release == 1} {
@@ -850,7 +963,11 @@ if {$release == 1} {
 		install_acplt cygwin
 	} else {
 		build_acplt
-		install_acplt linux
+		if {$targetOS == "nt"} {
+		install_acplt cygwin
+		} else {
+			install_acplt linux
+		}
 	}
 
 	create_release

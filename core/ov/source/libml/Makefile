@@ -45,7 +45,17 @@ endif
 CFLAGS = $(OV_ARCH_BITWIDTH_CFLAGS) -Wall -O2 -DML_SYSTEM_UNIX -DDBG_TO_STDERR=0 -fPIC
 
 
-CC = gcc
+ifneq "$(origin GCC_BIN_PREFIX)" "undefined"
+CC = $(GCC_BIN_PREFIX)gcc
+else
+GCC_BIN_PREFIX=
+endif
+
+CC ?= $(GCC_BIN_PREFIX)gcc
+AR = $(GCC_BIN_PREFIX)ar
+RANLIB = $(GCC_BIN_PREFIX)ranlib
+
+
 
 all: libml.a
 
@@ -56,8 +66,8 @@ SOURCES_LIBML = ml_malloc.c ml_free.c ml_realloc.c
 OBJECTS_LIBML = $(foreach src, $(SOURCES_LIBML), $(basename $(src)).o)
 
 libml.a: $(OBJECTS_LIBML)
-	ar crv $@ $^
-	ranlib $@
+	$(AR) crv $@ $^
+	$(RANLIB) $@
 
 
 $(OBJECTS_LIBML): $(SOURCES_LIBML) $(HEADERS)

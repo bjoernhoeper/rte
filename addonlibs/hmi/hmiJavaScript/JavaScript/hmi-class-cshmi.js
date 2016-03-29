@@ -44,10 +44,6 @@
 *	--------
 *	Je							Holger Jeromin <Holger.Jeromin@plt.rwth-aachen.de>
 *
-*	CVS:
-*	----
-*	$Revision: 9848 $
-*	$Date: 2015-11-05 11:00:38 +0100 (Do, 05 Nov 2015) $
 *
 *	History:
 *	--------
@@ -125,7 +121,7 @@ function cshmi() {
 /*#########################################################################################################################
 TODO:
 setvar type erlauben
-überall asyncrone requests nutzen
+ueberall asyncrone requests nutzen
 #########################################################################################################################*/
 
 /***********************************************************************
@@ -1245,13 +1241,19 @@ cshmi.prototype = {
 				var Coords = null;
 				while( (IteratorObj = IteratorObj.parentNode) && IteratorObj !== null && IteratorObj.namespaceURI == HMI.HMI_Constants.NAMESPACE_SVG){
 					for(var i = 0; i < IteratorObj.childNodes.length;i++){
-						if (Source.childNodes[i].tagName === "polyline" && Source.childNodes[i].Coords !== undefined){
-							Coords = Source.childNodes[i].Coords;
+						if (IteratorObj.childNodes[i].tagName === "polyline" && IteratorObj.childNodes[i].ResourceList && IteratorObj.childNodes[i].ResourceList.RoutePolyline && IteratorObj.childNodes[i].ResourceList.RoutePolyline.Coords !== undefined){
+							Coords = IteratorObj.childNodes[i].ResourceList.RoutePolyline.Coords;
 							break;
 						}
 					}
+					if(Coords !== null){
+						break;
+					}
 				}
-				if (ParameterValue === "OperatorInput"){
+				if(Coords === null){
+					return "";
+				}
+				if (ParameterValue === "getPolylineTotalLength"){
 					return getPolylineTotalLength(Coords).toString();
 				}
 				
@@ -1260,14 +1262,17 @@ cshmi.prototype = {
 				var fraction = 0;
 				if (splittedValueParameter.length > 2){
 					this.ResourceList.Actions["tempPath"] = new Object();
-					this.ResourceList.Actions["tempPath"].ParameterName = splittedValueParameter[2];
-					this.ResourceList.Actions["tempPath"].ParameterValue = splittedValueParameter[3];
-					fraction = this._getValue(VisualObject, "tempPath", null, null, null, true);
+					this.ResourceList.Actions["tempPath"].ParameterName = splittedValueParameter[1];
+					this.ResourceList.Actions["tempPath"].ParameterValue = splittedValueParameter[2];
+					var tempfraction = this._getValue(VisualObject, "tempPath", null, null, null, true);
+					if(tempfraction){
+						fraction = parseFloat(tempfraction);
+					}
 				}
-				var Point = getPolylineXPointFromFraction(Coords, fraction);
-				if(ParameterValue.indexOf("getPolylinePointXAtFractionLength") !== -1){
+				var Point = getPolylinePointFromFraction(Coords, fraction);
+				if(Point.x !== null && ParameterValue.indexOf("getPolylinePointXAtFractionLength") !== -1){
 					return Point.x.toString();
-				}else if(ParameterValue.indexOf("getPolylinePointYAtFractionLength") !== -1){
+				}else if(Point.y !== null && ParameterValue.indexOf("getPolylinePointYAtFractionLength") !== -1){
 					return Point.y.toString();
 				}
 				return "";
@@ -1653,6 +1658,8 @@ cshmi.prototype = {
 						NewValue = NewValue * parseFloat(NewValuePart);
 					}else if (thisObserverEntry.ObjectName.indexOf("div") === 0){
 						NewValue = NewValue / parseFloat(NewValuePart);
+					}else if (thisObserverEntry.ObjectName.indexOf("mod") === 0){
+						NewValue = NewValue%NewValuePart;
 					}else if (thisObserverEntry.ObjectName.indexOf("abs") === 0){
 						NewValue = NewValue + Math.abs(parseFloat(NewValuePart));
 					}else if (thisObserverEntry.ObjectName.indexOf("acos") === 0){
@@ -3474,11 +3481,11 @@ cshmi.prototype = {
 			//get connection offsets
 			if (SourceBase === null){
 				//skip
-			}else if (SourceBase.ResourceList && SourceBase.ResourceList.ConnectionFromCount !== undefined){
+			}else if (SourceBase.ResourceList && SourceBase.ResourceList.ConnectionFromCount !== undefined && TargetConnectionPoint !== null){
 				//there is already an incoming connection for this Object
 				SourceBase.ResourceList.ConnectionFromCount += 1;
 				OffsetSource = SourceBase.ResourceList.ConnectionFromCount * parseFloat(requestList[ObjectPath]["gridWidth"]);
-			}else{
+			}else if(TargetConnectionPoint !== null){
 				//remember the result
 				if (SourceBase.ResourceList === undefined){
 					SourceBase.ResourceList = new Object();
@@ -3488,11 +3495,11 @@ cshmi.prototype = {
 			}
 			if (TargetBase === null){
 				//skip
-			}else if (TargetBase.ResourceList && TargetBase.ResourceList.ConnectionFromCount !== undefined){
+			}else if (TargetBase.ResourceList && TargetBase.ResourceList.ConnectionFromCount !== undefined && SourceConnectionPoint !== null){
 				//there is already an incoming connection for this Object
 				TargetBase.ResourceList.ConnectionFromCount += 1;
 				OffsetTarget = TargetBase.ResourceList.ConnectionFromCount * parseFloat(requestList[ObjectPath]["gridWidth"]);
-			}else{
+			}else if(SourceConnectionPoint !== null){
 				//remember the result
 				if (TargetBase.ResourceList === undefined){
 					TargetBase.ResourceList = new Object();
@@ -6453,12 +6460,4 @@ function ObserverEntry(ObjectName, delimiter){
 	}
 	this.ObjectName = ObjectName;
 	this.value = null;
-}
-
-var filedate = "$Date: 2015-11-05 11:00:38 +0100 (Do, 05 Nov 2015) $";
-filedate = filedate.substring(7, filedate.length-2);
-if ("undefined" == typeof HMIdate){
-	HMIdate = filedate;
-}else if (HMIdate < filedate){
-	HMIdate = filedate;
 }
